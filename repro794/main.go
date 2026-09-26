@@ -86,11 +86,42 @@ func main() {
 		fmt.Printf("%-32s ok\n", c.name)
 	}
 
+	// The SQL migration the README change proposes, run verbatim: up, then down.
+	if err := sqlExample(ctx, db); err != nil {
+		fmt.Printf("%-32s FAILED  %v\n", "README sql example", err)
+		failures++
+	} else {
+		fmt.Printf("%-32s ok\n", "README sql example")
+	}
+
 	fmt.Printf("\ngoose %s\n", goose.VERSION)
 	if failures != 1 {
-		fmt.Printf("expected exactly one of the two to fail, got %d\n", failures)
+		fmt.Printf("expected exactly one failure (the one Exec case), got %d\n", failures)
 		os.Exit(1)
 	}
+}
+
+func sqlExample(ctx context.Context, db *sql.DB) error {
+	for _, stmt := range []string{
+		`DROP TABLE IF EXISTS goose_db_version`,
+		`DROP TABLE IF EXISTS users`,
+		`CREATE TABLE users (id int, email text)`,
+	} {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	p, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS("repro794/migrations"))
+	if err != nil {
+		return err
+	}
+	if _, err := p.Up(ctx); err != nil {
+		return fmt.Errorf("up: %w", err)
+	}
+	if _, err := p.Down(ctx); err != nil {
+		return fmt.Errorf("down: %w", err)
+	}
+	return nil
 }
 
 func reset(ctx context.Context, db *sql.DB) {
